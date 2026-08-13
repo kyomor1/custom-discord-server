@@ -2,16 +2,40 @@ import { Response } from 'express';
 import { prisma } from '../db.js';
 import { AuthRequest } from '../middleware/auth.js';
 
+export function formatReactions(reactions: any[] = [], currentUserId: string = '') {
+  const grouped: Record<string, { emoji: string; count: number; users: string[]; reactedByMe: boolean }> = {};
+
+  reactions.forEach(r => {
+    if (!grouped[r.emoji]) {
+      grouped[r.emoji] = {
+        emoji: r.emoji,
+        count: 0,
+        users: [],
+        reactedByMe: false
+      };
+    }
+    grouped[r.emoji].count += 1;
+    grouped[r.emoji].users.push(r.userId);
+    if (r.userId === currentUserId) {
+      grouped[r.emoji].reactedByMe = true;
+    }
+  });
+
+  return Object.values(grouped);
+}
+
 export async function getChannelMessages(req: AuthRequest, res: Response) {
   try {
     const { channelId } = req.params;
+    const currentUserId = req.userId || '';
 
     const messages = await prisma.message.findMany({
       where: { channelId },
       include: {
         author: {
-          select: { id: true, username: true, avatarUrl: true }
-        }
+          select: { id: true, username: true, avatarUrl: true, status: true, customStatus: true }
+        },
+        reactions: true
       },
       orderBy: { createdAt: 'asc' },
       take: 100
@@ -19,7 +43,8 @@ export async function getChannelMessages(req: AuthRequest, res: Response) {
 
     const serializedMessages = messages.map(msg => ({
       ...msg,
-      fileSize: msg.fileSize ? Number(msg.fileSize) : null
+      fileSize: msg.fileSize ? Number(msg.fileSize) : null,
+      reactions: formatReactions(msg.reactions, currentUserId)
     }));
 
     return res.json({ messages: serializedMessages });
@@ -43,11 +68,12 @@ export async function getDmMessages(req: AuthRequest, res: Response) {
       },
       include: {
         author: {
-          select: { id: true, username: true, avatarUrl: true }
+          select: { id: true, username: true, avatarUrl: true, status: true, customStatus: true }
         },
         recipient: {
-          select: { id: true, username: true, avatarUrl: true }
-        }
+          select: { id: true, username: true, avatarUrl: true, status: true, customStatus: true }
+        },
+        reactions: true
       },
       orderBy: { createdAt: 'asc' },
       take: 100
@@ -55,7 +81,8 @@ export async function getDmMessages(req: AuthRequest, res: Response) {
 
     const serializedMessages = messages.map(msg => ({
       ...msg,
-      fileSize: msg.fileSize ? Number(msg.fileSize) : null
+      fileSize: msg.fileSize ? Number(msg.fileSize) : null,
+      reactions: formatReactions(msg.reactions, currentUserId)
     }));
 
     return res.json({ messages: serializedMessages });
@@ -90,5 +117,69 @@ export async function deleteMessage(req: AuthRequest, res: Response) {
   } catch (error) {
     console.error('Delete message error:', error);
     return res.status(500).json({ error: 'Failed to delete message' });
+  }
+}
+
+export async function togglePinMessage(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params;
+
+    const message = await prisma.message.findUnique({
+      where: { id }
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    const updated = await prisma.message.update({
+      where: { id },
+      data: { isPinned: !message.isPinned },
+      include: {
+        author: {
+          select: { id: true, username: true, avatarUrl: true, status: true, customStatus: true }
+        },
+        reactions: true
+      }
+    });
+
+    return res.json({
+      message: {
+        ...updated,
+        fileSize: updated.fileSize ? Number(updated.fileSize) : null,
+        reactions: formatReactions(updated.reactions, req.userId)
+      }
+    });
+  } catch (error) {
+    console.error('Toggle pin message error:', error);
+    return res.status(500).json({ error: 'Failed to pin/unpin message' });
+  }
+}
+
+export async function getPinnedMessages(req: AuthRequest, res: Response) {
+  try {
+    const { channelId } = req.params;
+
+    const messages = await prisma.message.findMany({
+      where: { channelId, isPinned: true },
+      include: {
+        author: {
+          select: { id: true, username: true, avatarUrl: true, status: true, customStatus: true }
+        },
+        reactions: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const serializedMessages = messages.map(msg => ({
+      ...msg,
+      fileSize: msg.fileSize ? Number(msg.fileSize) : null,
+      reactions: formatReactions(msg.reactions, req.userId)
+    }));
+
+    return res.json({ pinnedMessages: serializedMessages });
+  } catch (error) {
+    console.error('Fetch pinned messages error:', error);
+    return res.status(500).json({ error: 'Failed to fetch pinned messages' });
   }
 }

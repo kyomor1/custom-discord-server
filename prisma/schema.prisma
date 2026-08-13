@@ -8,16 +8,19 @@ datasource db {
 }
 
 model User {
-  id           String         @id @default(uuid())
-  username     String         @unique
+  id           String            @id @default(uuid())
+  username     String            @unique
   passwordHash String
   avatarUrl    String?
-  createdAt    DateTime       @default(now())
+  status       String            @default("online")
+  customStatus String?
+  createdAt    DateTime          @default(now())
 
-  ownedServers Server[]       @relation("ServerOwner")
+  ownedServers Server[]          @relation("ServerOwner")
   memberships  ServerMember[]
-  messages     Message[]      @relation("AuthorMessages")
-  receivedDms  Message[]      @relation("RecipientMessages")
+  messages     Message[]         @relation("AuthorMessages")
+  receivedDms  Message[]         @relation("RecipientMessages")
+  reactions    MessageReaction[]
 }
 
 model Server {
@@ -58,18 +61,33 @@ model Channel {
 }
 
 model Message {
-  id          String   @id @default(uuid())
+  id          String            @id @default(uuid())
   content     String?
   fileUrl     String?
   fileName    String?
   fileType    String?
   fileSize    BigInt?
+  isPinned    Boolean           @default(false)
   authorId    String
   channelId   String?
   recipientId String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime          @default(now())
 
-  author      User     @relation("AuthorMessages", fields: [authorId], references: [id], onDelete: Cascade)
-  recipient   User?    @relation("RecipientMessages", fields: [recipientId], references: [id], onDelete: Cascade)
-  channel     Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author      User              @relation("AuthorMessages", fields: [authorId], references: [id], onDelete: Cascade)
+  recipient   User?             @relation("RecipientMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+  channel     Channel?          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  reactions   MessageReaction[]
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  emoji     String
+  messageId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
 }

@@ -12,6 +12,8 @@ export async function getUsers(req: AuthRequest, res: Response) {
         id: true,
         username: true,
         avatarUrl: true,
+        status: true,
+        customStatus: true,
         createdAt: true
       },
       orderBy: { username: 'asc' }
@@ -26,9 +28,9 @@ export async function getUsers(req: AuthRequest, res: Response) {
 
 export async function updateProfile(req: AuthRequest, res: Response) {
   try {
-    const { username, avatarUrl } = req.body;
+    const { username, avatarUrl, status, customStatus } = req.body;
 
-    const dataToUpdate: { username?: string; avatarUrl?: string } = {};
+    const dataToUpdate: { username?: string; avatarUrl?: string; status?: string; customStatus?: string | null } = {};
 
     if (username && username.trim()) {
       const cleanName = username.trim();
@@ -44,8 +46,16 @@ export async function updateProfile(req: AuthRequest, res: Response) {
       dataToUpdate.username = cleanName;
     }
 
-    if (avatarUrl) {
+    if (avatarUrl !== undefined) {
       dataToUpdate.avatarUrl = avatarUrl;
+    }
+
+    if (status !== undefined) {
+      dataToUpdate.status = status;
+    }
+
+    if (customStatus !== undefined) {
+      dataToUpdate.customStatus = customStatus;
     }
 
     const updatedUser = await prisma.user.update({
@@ -55,6 +65,8 @@ export async function updateProfile(req: AuthRequest, res: Response) {
         id: true,
         username: true,
         avatarUrl: true,
+        status: true,
+        customStatus: true,
         createdAt: true
       }
     });
@@ -63,5 +75,32 @@ export async function updateProfile(req: AuthRequest, res: Response) {
   } catch (error) {
     console.error('Update profile error:', error);
     return res.status(500).json({ error: 'Failed to update profile' });
+  }
+}
+
+export async function updateStatus(req: AuthRequest, res: Response) {
+  try {
+    const { status, customStatus } = req.body;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.userId! },
+      data: {
+        ...(status !== undefined && { status }),
+        ...(customStatus !== undefined && { customStatus })
+      },
+      select: {
+        id: true,
+        username: true,
+        avatarUrl: true,
+        status: true,
+        customStatus: true,
+        createdAt: true
+      }
+    });
+
+    return res.json({ user: updatedUser });
+  } catch (error) {
+    console.error('Update status error:', error);
+    return res.status(500).json({ error: 'Failed to update user status' });
   }
 }

@@ -7,8 +7,77 @@ import {
   getOrCreateAiBotUser
 } from '../services/ai.service.js';
 import { SendMessagePayload, DeleteMessagePayload } from './types.js';
+import { formatReactions } from '../controllers/message.controller.js';
 
 export function registerChatHandlers(io: Server, socket: Socket) {
+  // Handle User Status Change
+  socket.on('update_status', async (data: { userId: string; status: string; customStatus?: string }) => {
+    try {
+      const updatedUser = await prisma.user.update({
+        where: { id: data.userId },
+        data: {
+          status: data.status,
+          customStatus: data.customStatus
+        },
+        select: { id: true, username: true, avatarUrl: true, status: true, customStatus: true }
+      });
+
+      io.emit('user_status_changed', updatedUser);
+    } catch (err) {
+      console.error('Socket update_status error:', err);
+    }
+  });
+
+  // Handle Toggle Reaction
+  socket.on('toggle_reaction', async (data: { messageId: string; userId: string; emoji: string; channelId?: string; recipientId?: string }) => {
+    try {
+      const { messageId, userId, emoji } = data;
+      const existing = await prisma.messageReaction.findUnique({
+        where: {
+          messageId_userId_emoji: {
+            messageId,
+            userId,
+            emoji
+          }
+        }
+      });
+
+      if (existing) {
+        await prisma.messageReaction.delete({
+          where: { id: existing.id }
+        });
+      } else {
+        await prisma.messageReaction.create({
+          data: {
+            messageId,
+            userId,
+            emoji
+          }
+        });
+      }
+
+      const allReactions = await prisma.messageReaction.findMany({
+        where: { messageId }
+      });
+
+      const formatted = formatReactions(allReactions, userId);
+
+      const targetRoom = data.channelId
+        ? `channel_${data.channelId}`
+        : data.recipientId
+        ? `dm_${data.recipientId}_${userId}`
+        : null;
+
+      if (targetRoom) {
+        io.to(targetRoom).emit('reaction_updated', { messageId, reactions: formatted });
+      } else {
+        io.emit('reaction_updated', { messageId, reactions: formatted });
+      }
+    } catch (err) {
+      console.error('Socket toggle_reaction error:', err);
+    }
+  });
+
   // Handle Delete Message
   socket.on('delete_message', async (data: DeleteMessagePayload) => {
     try {
@@ -56,11 +125,12 @@ export function registerChatHandlers(io: Server, socket: Socket) {
         },
         include: {
           author: {
-            select: { id: true, username: true, avatarUrl: true }
+            select: { id: true, username: true, avatarUrl: true, status: true, customStatus: true }
           },
           recipient: {
-            select: { id: true, username: true, avatarUrl: true }
-          }
+            select: { id: true, username: true, avatarUrl: true, status: true, customStatus: true }
+          },
+          reactions: true
         }
       });
 
@@ -69,7 +139,8 @@ export function registerChatHandlers(io: Server, socket: Socket) {
         replyToId: data.replyToId || null,
         replyToUser: data.replyToUser || null,
         replyToContent: data.replyToContent || null,
-        fileSize: message.fileSize ? Number(message.fileSize) : null
+        fileSize: message.fileSize ? Number(message.fileSize) : null,
+        reactions: formatReactions(message.reactions, data.authorId)
       };
 
       if (data.channelId) {
@@ -102,10 +173,13 @@ export function registerChatHandlers(io: Server, socket: Socket) {
           replyToUser: message.author.username,
           replyToContent: message.content || '/usage',
           fileSize: null,
+          reactions: [],
           author: {
             id: 'ai_bot_system_id',
             username: 'AI Assistant 🤖',
-            avatarUrl: 'https://api.iconify.design/lucide:bot.svg'
+            avatarUrl: 'https://api.iconify.design/lucide:bot.svg',
+            status: 'online',
+            customStatus: 'Built-in Assistant'
           }
         };
 
@@ -136,8 +210,9 @@ export function registerChatHandlers(io: Server, socket: Socket) {
               },
               include: {
                 author: {
-                  select: { id: true, username: true, avatarUrl: true }
-                }
+                  select: { id: true, username: true, avatarUrl: true, status: true, customStatus: true }
+                },
+                reactions: true
               }
             });
           } catch (e) {
@@ -149,10 +224,13 @@ export function registerChatHandlers(io: Server, socket: Socket) {
               channelId: data.channelId || null,
               recipientId: data.recipientId || null,
               createdAt: new Date().toISOString(),
+              reactions: [],
               author: {
                 id: 'ai_bot_system_id',
                 username: 'AI Assistant 🤖',
-                avatarUrl: 'https://api.iconify.design/lucide:bot.svg'
+                avatarUrl: 'https://api.iconify.design/lucide:bot.svg',
+                status: 'online',
+                customStatus: 'Built-in Assistant'
               }
             };
           }
@@ -162,7 +240,8 @@ export function registerChatHandlers(io: Server, socket: Socket) {
             replyToId: message.id,
             replyToUser: message.author.username,
             replyToContent: message.content || '[Question]',
-            fileSize: null
+            fileSize: null,
+            reactions: []
           };
 
           // Clear typing status and broadcast answer
