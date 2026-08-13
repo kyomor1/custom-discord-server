@@ -9,6 +9,9 @@ export interface AuthRequest extends Request {
 }
 
 export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+  console.log(`[AuthMiddleware] Incoming Request: ${req.method} ${req.originalUrl}`);
+  console.log("HEADERS:", JSON.stringify(req.headers, null, 2));
+
   let authHeader =
     (req.headers.authorization as string) ||
     (req.headers.Authorization as string) ||
