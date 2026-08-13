@@ -9,13 +9,24 @@ export interface AuthRequest extends Request {
 }
 
 export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.warn(`[AuthMiddleware] Unauthorized access attempt to ${req.originalUrl} - Missing or malformed Authorization header`);
+  let authHeader =
+    (req.headers.authorization as string) ||
+    (req.headers.Authorization as string) ||
+    (req.headers['x-access-token'] as string);
+
+  if (!authHeader && req.query && typeof req.query.token === 'string') {
+    authHeader = `Bearer ${req.query.token}`;
+  }
+
+  if (!authHeader || typeof authHeader !== 'string') {
+    console.warn(`[AuthMiddleware] Unauthorized access attempt to ${req.originalUrl} - Missing or malformed Authorization header. Received headers:`, Object.keys(req.headers));
     return res.status(401).json({ error: 'No token provided' });
   }
 
-  const token = authHeader.split(' ')[1];
+  const token = authHeader.toLowerCase().startsWith('bearer ')
+    ? authHeader.split(' ')[1]
+    : authHeader;
+
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; username: string };
     req.userId = decoded.userId;
