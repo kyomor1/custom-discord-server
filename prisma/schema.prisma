@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id           String         @id @default(uuid())
+  username     String         @unique
+  passwordHash String
+  avatarUrl    String?
+  createdAt    DateTime       @default(now())
+
+  ownedServers Server[]       @relation("ServerOwner")
+  memberships  ServerMember[]
+  messages     Message[]      @relation("AuthorMessages")
+  receivedDms  Message[]      @relation("RecipientMessages")
+}
+
+model Server {
+  id         String         @id @default(uuid())
+  name       String
+  iconUrl    String?
+  inviteCode String         @unique @default(uuid())
+  ownerId    String
+  createdAt  DateTime       @default(now())
+
+  owner      User           @relation("ServerOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members    ServerMember[]
+  channels   Channel[]
+}
+
+model ServerMember {
+  id        String   @id @default(uuid())
+  serverId  String
+  userId    String
+  role      String   @default("MEMBER")
+  joinedAt  DateTime @default(now())
+
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+}
+
+model Channel {
+  id        String    @id @default(uuid())
+  serverId  String?
+  name      String
+  type      String    @default("TEXT")
+  createdAt DateTime  @default(now())
+
+  server    Server?   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  messages  Message[]
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  content     String?
+  fileUrl     String?
+  fileName    String?
+  fileType    String?
+  fileSize    BigInt?
+  authorId    String
+  channelId   String?
+  recipientId String?
+  createdAt   DateTime @default(now())
+
+  author      User     @relation("AuthorMessages", fields: [authorId], references: [id], onDelete: Cascade)
+  recipient   User?    @relation("RecipientMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+  channel     Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+}
