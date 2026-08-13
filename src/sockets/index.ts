@@ -2,7 +2,6 @@ import { Server, Socket } from 'socket.io';
 import { getGlobalVoiceStates, broadcastGlobalVoiceStates, voiceChannels } from './state.js';
 import { registerChatHandlers } from './chat.handler.js';
 import { registerVoiceHandlers } from './voice.handler.js';
-import { registerYtHandlers } from './yt.handler.js';
 
 export function setupSockets(io: Server) {
   io.on('connection', (socket: Socket) => {
@@ -30,7 +29,6 @@ export function setupSockets(io: Server) {
     // Register sub-handlers
     registerChatHandlers(io, socket);
     registerVoiceHandlers(io, socket);
-    registerYtHandlers(socket);
 
     // Handle Disconnect
     socket.on('disconnect', () => {
