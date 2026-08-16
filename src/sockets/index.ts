@@ -10,6 +10,11 @@ export function setupSockets(io: Server) {
     // Send initial global voice states map to newly connected socket
     socket.emit('voice_state_update', getGlobalVoiceStates());
 
+    // Socket Heartbeat to maintain 24/7 connection without 5-min timeout
+    socket.on('heartbeat', () => {
+      socket.emit('heartbeat_ack', { timestamp: Date.now() });
+    });
+
     // Allow fetching current voice states on demand
     socket.on('get_voice_states', () => {
       socket.emit('voice_state_update', getGlobalVoiceStates());
