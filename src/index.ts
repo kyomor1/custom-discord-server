@@ -1,3 +1,5 @@
+// Load server/.env into process.env FIRST, before any module that reads env at load time.
+import './load-env.js';
 import express from 'express';
 import http from 'http';
 import path from 'path';
